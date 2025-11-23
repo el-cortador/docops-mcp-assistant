@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["mcp_confluence"]
+where = ["."]
 
 [project.scripts]
 confluence-mcp-server = "mcp_confluence.server:main"

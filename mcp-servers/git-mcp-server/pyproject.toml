@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["mcp_git"]
+where = ["."]
 
 [project.scripts]
 git-mcp-server = "mcp_git.server:main"

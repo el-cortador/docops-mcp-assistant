@@ -47,7 +47,7 @@ def search_in_docs(
 
         if score > 0:
             idx = text_norm.find(query_norm)
-            # берём фрагмент вокруг первого вхождения
+            # берем фрагмент вокруг первого вхождения
             start = max(0, idx - 200)
             end = min(len(text), idx + 200)
             snippet = text[start:end].strip()
@@ -60,8 +60,8 @@ def search_in_docs(
                 }
             )
 
-    # Если прямых совпадений нет — вернём просто топ-файлы как контекст,
-    # чтобы LLM всё равно имел под рукой хоть что-то.
+    # Если прямых совпадений нет — вернем просто топ-файлы как контекст,
+    # чтобы LLM все равно имел под рукой хоть что-то.
     if not results:
         fallback_results: List[Dict[str, Any]] = []
         for path in docs_root.rglob("*.md"):

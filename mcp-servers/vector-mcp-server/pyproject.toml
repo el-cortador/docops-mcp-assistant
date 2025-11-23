@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["mcp_vector"]
+where = ["."]
 
 [project.scripts]
 vector-mcp-server = "mcp_vector.server:main"
