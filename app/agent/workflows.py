@@ -36,7 +36,7 @@ def qa_over_docs(
 
     # 2. Ищем по векторному стораджу (если есть)
     try:
-        vector_results = vector_tools.search_similar_documents(
+        vector_results = vector_tools.search_documents(
             project_slug=project_slug,
             query=question,
             limit=max_docs,

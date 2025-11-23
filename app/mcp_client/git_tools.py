@@ -19,13 +19,14 @@ def search_in_docs(
     query: str,
     docs_subdir: str = "docs",
     max_results: int = 5,
+    min_score: float = 5.0,
 ) -> List[Dict[str, Any]]:
     """
-    [Не проверено]
     Ищет строку/фразу в markdown-файлах документации проекта.
+    Использует токенизацию и фразовый поиск для улучшения релевантности.
 
     Возвращает список словарей:
-      {"path": str, "snippet": str, "score": int}
+      {"path": str, "snippet": str, "score": float}
     """
     root = _project_root(project_slug)
     docs_root = (root / docs_subdir).resolve()
@@ -34,6 +35,23 @@ def search_in_docs(
         return []
 
     query_norm = query.lower().strip()
+
+    # Токенизация: разбиваем запрос на слова, фильтруем короткие стоп-слова
+    stop_words = {"как", "что", "где", "когда", "и", "в", "на", "с", "по", "для", "или", "а", "это", "эта", "этот"}
+    tokens = [
+        word for word in query_norm.split()
+        if len(word) > 2 and word not in stop_words
+    ]
+
+    if not tokens:
+        # Если после фильтрации не осталось токенов, используем исходный запрос
+        tokens = [query_norm]
+
+    # Извлекаем технические термины (2-3 слова подряд из латиницы/цифр)
+    import re
+    technical_phrases = re.findall(r'\b[a-z][a-z0-9_-]*(?:\s+[a-z][a-z0-9_-]*){0,2}\b', query_norm)
+    technical_phrases = [p for p in technical_phrases if len(p) > 3]
+
     results: List[Dict[str, Any]] = []
 
     for path in docs_root.rglob("*.md"):
@@ -43,13 +61,49 @@ def search_in_docs(
             continue
 
         text_norm = text.lower()
-        score = text_norm.count(query_norm) if query_norm else 0
 
-        if score > 0:
-            idx = text_norm.find(query_norm)
-            # берем фрагмент вокруг первого вхождения
-            start = max(0, idx - 200)
-            end = min(len(text), idx + 200)
+        # Подсчитываем релевантность на основе токенов и фраз
+        score = 0.0
+        matched_tokens = []
+
+        # 1. Фразовый поиск (высокий вес) - exact match дает большой бонус
+        for phrase in technical_phrases:
+            phrase_count = text_norm.count(phrase)
+            if phrase_count > 0:
+                score += phrase_count * 10.0  # Фраза дает 10 баллов за вхождение
+                matched_tokens.append(phrase)
+
+        # 2. Поиск по токенам (базовый вес)
+        token_matches = 0
+        for token in tokens:
+            count = text_norm.count(token)
+            if count > 0:
+                score += count * 1.0  # Токен дает 1 балл за вхождение
+                matched_tokens.append(token)
+                token_matches += 1
+
+        # 3. Бонус за количество совпавших разных токенов (diversity bonus)
+        if token_matches >= 2:
+            score += token_matches * 2.0
+
+        # Применяем минимальный порог релевантности
+        if score >= min_score:
+            # Находим фрагмент с наибольшей концентрацией совпадений
+            best_idx = -1
+            if matched_tokens:
+                # Приоритет - фразы, потом токены
+                for token in matched_tokens:
+                    idx = text_norm.find(token)
+                    if idx != -1:
+                        best_idx = idx
+                        break
+
+            if best_idx == -1:
+                best_idx = 0
+
+            # Берем фрагмент вокруг найденного места
+            start = max(0, best_idx - 200)
+            end = min(len(text), best_idx + 200)
             snippet = text[start:end].strip()
 
             results.append(
@@ -60,28 +114,7 @@ def search_in_docs(
                 }
             )
 
-    # Если прямых совпадений нет — вернем просто топ-файлы как контекст,
-    # чтобы LLM все равно имел под рукой хоть что-то.
-    if not results:
-        fallback_results: List[Dict[str, Any]] = []
-        for path in docs_root.rglob("*.md"):
-            try:
-                text = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                continue
-            snippet = text[:400].strip()
-            if not snippet:
-                continue
-            fallback_results.append(
-                {
-                    "path": str(path.relative_to(root)),
-                    "snippet": snippet,
-                    "score": 0,
-                }
-            )
-        results = fallback_results
-
-    # Сортируем по score (кол-во совпадений) по убыванию
+    # Сортируем по score (релевантности) по убыванию
     results.sort(key=lambda r: r.get("score", 0), reverse=True)
     return results[:max_results]
 

@@ -114,33 +114,86 @@ class JsonlDocumentStore:
         project_slug: str,
         query: str,
         limit: int = 5,
+        min_score: float = 5.0,
     ) -> List[Dict[str, Any]]:
+        import re
+
         all_docs = self._load_all()
         docs = [d for d in all_docs if d.project_slug == project_slug]
         if not docs:
             return []
 
         q = query.lower()
-        scored: List[Tuple[int, StoredDocument]] = []
+
+        # Токенизация: разбиваем запрос на слова, фильтруем короткие стоп-слова
+        stop_words = {"как", "что", "где", "когда", "и", "в", "на", "с", "по", "для", "или", "а", "это", "эта", "этот"}
+        tokens = [
+            word for word in q.split()
+            if len(word) > 2 and word not in stop_words
+        ]
+
+        if not tokens:
+            # Если после фильтрации не осталось токенов, используем исходный запрос
+            tokens = [q]
+
+        # Извлекаем технические термины (2-3 слова подряд из латиницы/цифр)
+        technical_phrases = re.findall(r'\b[a-z][a-z0-9_-]*(?:\s+[a-z][a-z0-9_-]*){0,2}\b', q)
+        technical_phrases = [p for p in technical_phrases if len(p) > 3]
+
+        scored: List[Tuple[float, StoredDocument, str]] = []
 
         for d in docs:
-            count = d.text.lower().count(q)
-            if count > 0:
-                scored.append((count, d))
+            text_lower = d.text.lower()
+
+            # Подсчитываем релевантность на основе токенов и фраз
+            score = 0.0
+            matched_tokens = []
+
+            # 1. Фразовый поиск (высокий вес)
+            for phrase in technical_phrases:
+                phrase_count = text_lower.count(phrase)
+                if phrase_count > 0:
+                    score += phrase_count * 10.0  # Фраза дает 10 баллов за вхождение
+                    matched_tokens.append(phrase)
+
+            # 2. Поиск по токенам (базовый вес)
+            token_matches = 0
+            for token in tokens:
+                count = text_lower.count(token)
+                if count > 0:
+                    score += count * 1.0  # Токен дает 1 балл за вхождение
+                    matched_tokens.append(token)
+                    token_matches += 1
+
+            # 3. Бонус за количество совпавших разных токенов
+            if token_matches >= 2:
+                score += token_matches * 2.0
+
+            # Применяем минимальный порог релевантности
+            if score >= min_score:
+                # Находим фрагмент с наибольшей концентрацией совпадений
+                best_idx = -1
+                if matched_tokens:
+                    for token in matched_tokens:
+                        idx = text_lower.find(token)
+                        if idx != -1:
+                            best_idx = idx
+                            break
+
+                if best_idx == -1:
+                    best_idx = 0
+
+                start = max(0, best_idx - 80)
+                end = min(len(d.text), best_idx + 80)
+                snippet = d.text[start:end].replace("\n", " ")
+
+                scored.append((score, d, snippet))
 
         scored.sort(key=lambda x: x[0], reverse=True)
         top = scored[: max(limit, 0)]
 
         results: List[Dict[str, Any]] = []
-        for _, d in top:
-            idx = d.text.lower().find(q)
-            if idx == -1:
-                snippet = d.text[:160].replace("\n", " ")
-            else:
-                start = max(0, idx - 80)
-                end = min(len(d.text), idx + 80)
-                snippet = d.text[start:end].replace("\n", " ")
-
+        for score, d, snippet in top:
             results.append(
                 {
                     "doc_id": d.doc_id,
