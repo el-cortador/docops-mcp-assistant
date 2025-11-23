@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "git-mcp-server"
+version = "0.1.0"
+description = "MCP server for Git operations"
+authors = [{ name = "Your Name" }]
+requires-python = ">=3.10"
+
+dependencies = [
+    "httpx>=0.25.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["mcp_git"]
+
+[project.scripts]
+git-mcp-server = "mcp_git.server:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]

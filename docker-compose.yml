@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docops-app
+    command: python -m app.main
+    env_file:
+      - .env
+    ports:
+      - "${DOCOPS_GRADIO_PORT-7860}:7860"
+    # Для разработки удобно монтировать исходники:
+    volumes:
+      - ./:/app
+    depends_on:
+      - git-mcp
+      - confluence-mcp
+      - vector-mcp
+    restart: unless-stopped
+
+  git-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docops-git-mcp
+    # Предполагаем, что сервер можно запустить так;
+    # при необходимости поправишь под свою реализацию.
+    command: python -m mcp_git.server
+    env_file:
+      - .env
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - ./demo_data:/app/demo_data
+    restart: unless-stopped
+
+  confluence-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docops-confluence-mcp
+    command: python -m mcp_confluence.server
+    env_file:
+      - .env
+    working_dir: /app
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+
+  vector-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docops-vector-mcp
+    command: python -m mcp_vector.server
+    env_file:
+      - .env
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - ./demo_data:/app/demo_data
+    restart: unless-stopped

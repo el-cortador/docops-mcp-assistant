@@ -1,0 +1,31 @@
+projects:
+
+  docops-saas:
+    name: "DocOps SaaS Platform"
+    description: "Платформа управления документацией и DevOps-контурами."
+    repo:
+      type: "local"                # локальный demo_repo
+      path: "docops-saas"          # имя директории внутри demo_repos/
+    confluence:
+      space_key: "DOCOPS"          # пример
+      enabled: false               # Confluence отключен в демо-режиме
+    tags:
+      - billing
+      - auth
+      - infra
+      - docs
+
+  airport-food:
+    name: "Airport Food Delivery"
+    description: "Сервис доставки блюд из ресторанов в бизнес-залы аэропортов."
+    repo:
+      type: "local"
+      path: "airport-food"
+    confluence:
+      space_key: "AIRFOOD"
+      enabled: false
+    tags:
+      - logistics
+      - catering
+      - delivery
+      - airports
