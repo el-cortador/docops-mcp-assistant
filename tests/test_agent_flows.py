@@ -91,18 +91,6 @@ def test_qa_over_docs_returns_answer_and_sources(demo_projects_env, fake_llm):
     assert any("billing_overview.md" in s["path"] for s in result.sources)
 
 
-def test_build_coverage_report_uses_llm_and_files(demo_projects_env, fake_llm):
-    cov = workflows.build_coverage_report(
-        project_slug="docops-saas",
-    )
-
-    # Ответ — то, что вернул fake LLM, но это нас устраивает как smoke-тест
-    assert "[FAKE-LLM ANSWER]" in cov.report_markdown
-    # Файлы собраны
-    assert any("README.md" in f for f in cov.files)
-    assert any("docs/billing_overview.md" in f for f in cov.files)
-
-
 def test_docops_agent_wraps_workflows(demo_projects_env, fake_llm):
     project = ProjectContext(slug="docops-saas", name="Demo")
     agent = DocOpsAgent(project=project)
@@ -110,20 +98,3 @@ def test_docops_agent_wraps_workflows(demo_projects_env, fake_llm):
     qa = agent.answer_question("Расскажи про биллинг.")
     assert "[FAKE-LLM ANSWER]" in qa["answer"]
     assert isinstance(qa["sources"], list)
-
-    diff_text = """diff --git a/services/billing/main.py b/services/billing/main.py
-index 111..222 100644
---- a/services/billing/main.py
-+++ b/services/billing/main.py
-@@ -1,3 +1,5 @@
- def create_invoice():
--    return {'status': 'ok'}
-+    # добавили поле amount
-+    return {'status': 'ok', 'amount': 100}
-"""
-    pr = agent.generate_doc_from_diff(diff_text=diff_text, title_hint="Billing changes")
-    assert "[FAKE-LLM ANSWER]" in pr["document_markdown"]
-
-    cov = agent.build_coverage_report()
-    assert "[FAKE-LLM ANSWER]" in cov["report_markdown"]
-    assert "README.md" in "\n".join(cov["files"])

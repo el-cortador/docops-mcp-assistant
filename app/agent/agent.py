@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 
 from app.agent import workflows
 
@@ -41,4 +41,3 @@ class DocOpsAgent:
             "answer": qa_result.answer,
             "sources": qa_result.sources,
         }
-

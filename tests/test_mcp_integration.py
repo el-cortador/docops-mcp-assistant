@@ -50,7 +50,7 @@ def test_git_tools_and_vector_tools_integration(mcp_env):
     project_slug = "docops-saas"
 
     docs = git_tools.list_files(project_slug=project_slug, subdir="docs")
-    assert any("billing_overview.md" in p for p in docs)
+    assert any("billing_overview.md" in p.get("path", "") for p in docs)
 
     content = git_tools.read_file(
         project_slug=project_slug,

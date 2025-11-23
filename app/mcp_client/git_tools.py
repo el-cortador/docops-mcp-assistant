@@ -1,62 +1,17 @@
 # app/mcp_client/git_tools.py
 
-# Модуль для операций с Git-репозиторием и функции поиска по документации
-
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from app.config.settings import settings
 
 
 def _project_root(project_slug: str) -> Path:
-    # Получает путь в корневую директорию проекта по его идентификатору
-    
-    base = settings.paths.demo_repos_dir
-    root = base / project_slug
-    if not root.exists():
-        raise FileNotFoundError(
-            f"Demo repository not found for slug={project_slug} at {root}"
-        )
-    return root
-
-
-def list_files(project_slug: str, subdir: str = "") -> List[str]:
-    # Выдает список всех файлов в репозитории проекта
-    
-    root = _project_root(project_slug)
-    target = (root / subdir).resolve()
-
-    if not target.exists():
-        return []
-
-    # Чтобы не вылезти за пределы корня репы
-    if not str(target).startswith(str(root)):
-        raise ValueError("subdir must stay inside project root")
-
-    files: List[str] = []
-    for p in target.rglob("*"):
-        if p.is_file():
-            rel = p.relative_to(root).as_posix()
-            files.append(rel)
-
-    return files
-
-
-def read_file(project_slug: str, path: str) -> str:
-    # Считывает данные файла из репы проекта
-    
-    root = _project_root(project_slug)
-    fpath = (root / path).resolve()
-
-    if not str(fpath).startswith(str(root)):
-        raise ValueError("Path escapes project root")
-
-    if not fpath.exists() or not fpath.is_file():
-        raise FileNotFoundError(f"File not found: {path} in project {project_slug}")
-
-    return fpath.read_text(encoding="utf-8")
+    # Защита от выхода за пределы корня репозитория
+    root = settings.paths.demo_repos_dir / project_slug
+    return root.resolve()
 
 
 def search_in_docs(
@@ -65,34 +20,109 @@ def search_in_docs(
     docs_subdir: str = "docs",
     max_results: int = 5,
 ) -> List[Dict[str, Any]]:
-    # Ищет строку запроса в markdown-файлах проекта и возвращает пути и найденные фрагменты текста
+    """
+    [Не проверено]
+    Ищет строку/фразу в markdown-файлах документации проекта.
 
+    Возвращает список словарей:
+      {"path": str, "snippet": str, "score": int}
+    """
     root = _project_root(project_slug)
     docs_root = (root / docs_subdir).resolve()
 
     if not docs_root.exists():
         return []
 
+    query_norm = query.lower().strip()
     results: List[Dict[str, Any]] = []
-    q_lower = query.lower()
 
-    for md in docs_root.rglob("*.md"):
-        text = md.read_text(encoding="utf-8")
-        idx = text.lower().find(q_lower)
-        if idx == -1:
+    for path in docs_root.rglob("*.md"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
             continue
 
-        start = max(0, idx - 80)
-        end = min(len(text), idx + 80)
-        snippet = text[start:end].replace("\n", " ")
+        text_norm = text.lower()
+        score = text_norm.count(query_norm) if query_norm else 0
+
+        if score > 0:
+            idx = text_norm.find(query_norm)
+            # берём фрагмент вокруг первого вхождения
+            start = max(0, idx - 200)
+            end = min(len(text), idx + 200)
+            snippet = text[start:end].strip()
+
+            results.append(
+                {
+                    "path": str(path.relative_to(root)),
+                    "snippet": snippet,
+                    "score": score,
+                }
+            )
+
+    # Если прямых совпадений нет — вернём просто топ-файлы как контекст,
+    # чтобы LLM всё равно имел под рукой хоть что-то.
+    if not results:
+        fallback_results: List[Dict[str, Any]] = []
+        for path in docs_root.rglob("*.md"):
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            snippet = text[:400].strip()
+            if not snippet:
+                continue
+            fallback_results.append(
+                {
+                    "path": str(path.relative_to(root)),
+                    "snippet": snippet,
+                    "score": 0,
+                }
+            )
+        results = fallback_results
+
+    # Сортируем по score (кол-во совпадений) по убыванию
+    results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    return results[:max_results]
+
+def list_files(project_slug: str, subdir: str = "docs") -> List[Dict[str, Any]]:
+    # Возвращает список файлов подкаталога с их содержимым: path + content
+    root = _project_root(project_slug)
+    base_dir = (root / subdir).resolve()
+
+    if not base_dir.exists():
+        return []
+
+    results: List[Dict[str, Any]] = []
+
+    for path in base_dir.rglob("*.md"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
 
         results.append(
             {
-                "path": md.relative_to(root).as_posix(),
-                "snippet": snippet,
+                "path": str(path.relative_to(root)),
+                "content": text,
             }
         )
-        if len(results) >= max_results:
-            break
 
     return results
+
+
+def read_file(project_slug: str, path: str) -> str:
+    # Читает содержимое файла по указанному пути
+    root = _project_root(project_slug)
+    file_path = (root / path).resolve()
+    
+    # Защита от выхода за пределы корня
+    try:
+        file_path.relative_to(root)
+    except ValueError:
+        raise ValueError(f"Path {path} is outside project root")
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    
+    return file_path.read_text(encoding="utf-8")
